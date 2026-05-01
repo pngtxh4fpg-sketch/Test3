@@ -3,93 +3,110 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>CesiumJS 3D GPS Test</title>
-  <script src="https://cesium.com/downloads/cesiumjs/releases/1.110/Build/Cesium/Cesium.js"></script>
-  <link href="https://cesium.com/downloads/cesiumjs/releases/1.110/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+  <title>Cesium 3D Fix</title>
+  
+  <script src="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Cesium.js"></script>
+  <link href="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
+
   <style>
     html, body, #cesiumContainer {
       width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden;
       background: #000;
     }
-    #status {
-      position: absolute; top: 10px; left: 10px; z-index: 10;
-      background: rgba(0,0,0,0.7); color: white; padding: 10px;
-      border-radius: 8px; font-family: sans-serif; pointer-events: none;
+    #ui {
+      position: absolute; top: 15px; left: 15px; z-index: 10;
+      background: rgba(0,0,0,0.85); color: #00ff00; padding: 15px;
+      border-radius: 12px; font-family: 'Courier New', monospace; font-size: 12px;
+      border: 1px solid #333; pointer-events: none; max-width: 80%;
     }
+    .error { color: #ff453a; }
   </style>
 </head>
 <body>
 
-  <div id="status">Suche GPS Signal...</div>
+  <div id="ui">
+    <div>[STATUS] <span id="status">Initialisiere...</span></div>
+    <div>[LAT] <span id="lat">-</span></div>
+    <div>[LON] <span id="lon">-</span></div>
+    <div id="log" class="error"></div>
+  </div>
+
   <div id="cesiumContainer"></div>
 
   <script>
-    // 1. Initialisierung des 3D Viewers
-    // Hinweis: Für echtes Terrain/Satellitendetails benötigst du später einen kostenlosen 'Ion Token'.
-    // Hier nutzen wir Standard-Einstellungen zum Testen.
-    const viewer = new Cesium.Viewer('cesiumContainer', {
-      terrainProvider: Cesium.createWorldTerrain(), // Aktiviert 3D Berge/Gelände
-      baseLayerPicker: false,
-      geocoder: false,
-      homeButton: false,
-      infoBox: false,
-      navigationHelpButton: false,
-      sceneModePicker: false,
-      timeline: false,
-      animation: false
+    // FIX 1: Wir nutzen einen freien Imagery Provider (OSM), 
+    // damit die Karte auch OHNE Ion-Token erscheint.
+    const osm = new Cesium.OpenStreetMapImageryProvider({
+        url : 'https://a.tile.openstreetmap.org/'
     });
 
-    // 2. Erstellen eines Markers für den Nutzer
-    const userEntity = viewer.entities.add({
-      point: {
-        pixelSize: 15,
-        color: Cesium.Color.AZURE,
-        outlineColor: Cesium.Color.WHITE,
-        outlineWidth: 3
-      },
-      label: {
-        text: 'Deine Position',
-        font: '14pt sans-serif',
-        verticalOrigin: Cesium.VerticalOrigin.BOTTOM,
-        pixelOffset: new Cesium.Cartesian2(0, -20)
-      }
-    });
+    try {
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+            imageryProvider: osm,
+            terrainProvider: Cesium.createWorldTerrain(), // 3D Gelände
+            baseLayerPicker: false,
+            geocoder: false,
+            homeButton: false,
+            infoBox: false,
+            navigationHelpButton: false,
+            sceneModePicker: true, // Erlaubt Wechsel zwischen 2D/3D
+            timeline: false,
+            animation: false,
+            requestRenderMode: true // Spart Akku
+        });
 
-    let firstLock = true;
-
-    // 3. GPS Standort abfragen
-    if ("geolocation" in navigator) {
-      navigator.geolocation.watchPosition(pos => {
-        const lat = pos.coords.latitude;
-        const lon = pos.coords.longitude;
-        const alt = pos.coords.altitude || 0; // GPS Höhe falls verfügbar
-
-        const position = Cesium.Cartesian3.fromDegrees(lon, lat, alt);
-
-        // Marker positionieren
-        userEntity.position = position;
-
-        document.getElementById('status').innerText = `GPS Aktiv: ${lat.toFixed(4)}, ${lon.toFixed(4)}`;
-
-        // Beim ersten Mal zur Position "fliegen" und Kamera neigen
-        if (firstLock) {
-          viewer.camera.flyTo({
-            destination: Cesium.Cartesian3.fromDegrees(lon, lat, 1000), // 1km Höhe
-            orientation: {
-              heading: Cesium.Math.toRadians(0),
-              pitch: Cesium.Math.toRadians(-35), // Kamera nach vorne neigen für 3D Effekt
-              roll: 0.0
+        // Blauer Punkt für deine Position
+        const userMarker = viewer.entities.add({
+            point: {
+                pixelSize: 18,
+                color: Cesium.Color.fromCssColorString('#0a84ff'),
+                outlineColor: Cesium.Color.WHITE,
+                outlineWidth: 3
             }
-          });
-          firstLock = false;
+        });
+
+        let hasFoundLocation = false;
+
+        // GPS Logik
+        if ("geolocation" in navigator) {
+            document.getElementById('status').innerText = "Suche Satelliten...";
+            
+            navigator.geolocation.watchPosition(pos => {
+                const { latitude, longitude, altitude } = pos.coords;
+                
+                document.getElementById('status').innerText = "GPS Aktiv";
+                document.getElementById('lat').innerText = latitude.toFixed(6);
+                document.getElementById('lon').innerText = longitude.toFixed(6);
+                document.getElementById('log').innerText = "";
+
+                const position = Cesium.Cartesian3.fromDegrees(longitude, latitude, altitude || 0);
+                userMarker.position = position;
+
+                if (!hasFoundLocation) {
+                    viewer.camera.flyTo({
+                        destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, 1500), // 1.5km Höhe
+                        orientation: {
+                            pitch: Cesium.Math.toRadians(-30) // Neigung für 3D Effekt
+                        }
+                    });
+                    hasFoundLocation = true;
+                }
+            }, err => {
+                let msg = "GPS Fehler: ";
+                if (err.code === 1) msg += "Zugriff verweigert. Nutze HTTPS!";
+                if (err.code === 2) msg += "Position nicht gefunden.";
+                if (err.code === 3) msg += "Timeout.";
+                document.getElementById('log').innerText = msg;
+            }, {
+                enableHighAccuracy: true,
+                maximumAge: 0
+            });
+        } else {
+            document.getElementById('log').innerText = "Browser unterstützt kein GPS.";
         }
-      }, err => {
-        document.getElementById('status').innerText = "GPS Fehler: " + err.message;
-      }, {
-        enableHighAccuracy: true
-      });
-    } else {
-      document.getElementById('status').innerText = "GPS nicht unterstützt.";
+
+    } catch (e) {
+        document.getElementById('log').innerText = "Cesium Error: " + e.message;
     }
   </script>
 </body>
