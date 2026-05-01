@@ -3,18 +3,19 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cesium 3D Berge Fix</title>
+  <title>Cesium 3D Final Fix</title>
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Cesium.js"></script>
   <link href="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
   <style>
     html, body, #cesiumContainer { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: #000; }
-    #ui { position: absolute; top: 15px; left: 15px; z-index: 10; background: rgba(0,0,0,0.85); color: #00ff00; padding: 15px; border-radius: 12px; font-family: monospace; pointer-events: none; }
+    #ui { position: absolute; top: 15px; left: 15px; z-index: 10; background: rgba(0,0,0,0.85); color: #00ff00; padding: 15px; border-radius: 12px; font-family: monospace; }
   </style>
 </head>
 <body>
 
   <div id="ui">
-    <div>[STATUS] <span id="status">Lade 3D-Welt...</span></div>
+    <div>[STATUS] <span id="status">Initialisiere...</span></div>
+    <div id="log" style="color: #ff453a;"></div>
   </div>
 
   <div id="cesiumContainer"></div>
@@ -22,12 +23,10 @@
   <script>
     async function startApp() {
       try {
-        // 1. Viewer initialisieren (ohne Standard-Terrain, das machen wir gleich)
+        // 1. Viewer erstellen
         const viewer = new Cesium.Viewer('cesiumContainer', {
-          baseLayer: new Cesium.ImageryLayer(new Cesium.OpenStreetMapImageryProvider({
-            url: 'https://a.tile.openstreetmap.org/'
-          })),
-          baseLayerPicker: false,
+          // Wir nutzen hier direkt den Standard-Imagery-Provider von Cesium für den Test
+          baseLayerPicker: true, 
           geocoder: false,
           homeButton: false,
           infoBox: false,
@@ -37,23 +36,25 @@
           animation: false
         });
 
-        // 2. ArcGIS Terrain laden (Das funktioniert OHNE Token und zeigt echte Berge)
+        document.getElementById('status').innerText = "Viewer bereit. Lade Gelände...";
+
+        // 2. ArcGIS Terrain (funktioniert oft am besten ohne Token)
         try {
           const terrainProvider = await Cesium.ArcGISTiledElevationTerrainProvider.fromUrl(
             'https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer'
           );
           viewer.terrainProvider = terrainProvider;
-          document.getElementById('status').innerText = "3D Gelände aktiv!";
+          document.getElementById('status').innerText = "3D Gelände geladen!";
         } catch (e) {
-          console.error("Terrain Fehler:", e);
+          document.getElementById('log').innerText = "Gelände-Fehler: " + e.message;
         }
 
-        // 3. Tiefenprüfung einschalten
+        // 3. Tiefenprüfung
         viewer.scene.globe.depthTestAgainstTerrain = true;
 
-        // 4. Direkt zum Grand Canyon fliegen (da sieht man das 3D Gelände am besten)
-        viewer.camera.flyTo({
-          destination: Cesium.Cartesian3.fromDegrees(-112.11, 36.10, 5000),
+        // 4. Fokus auf ein extremes Gebirge (Matterhorn)
+        viewer.camera.setView({
+          destination: Cesium.Cartesian3.fromDegrees(7.658, 45.976, 5000),
           orientation: {
             pitch: Cesium.Math.toRadians(-25),
             heading: 0
@@ -61,7 +62,7 @@
         });
 
       } catch (error) {
-        console.error("Start Fehler:", error);
+        document.getElementById('log').innerText = "Kritischer Fehler: " + error.message;
       }
     }
 
