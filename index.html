@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Cesium 3D Fix</title>
+  <title>Cesium 3D GPS Map</title>
   
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Cesium.js"></script>
   <link href="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
@@ -17,7 +17,7 @@
       position: absolute; top: 15px; left: 15px; z-index: 10;
       background: rgba(0,0,0,0.85); color: #00ff00; padding: 15px;
       border-radius: 12px; font-family: 'Courier New', monospace; font-size: 12px;
-      border: 1px solid #333; pointer-events: none; max-width: 80%;
+      border: 1px solid #333; pointer-events: none;
     }
     .error { color: #ff453a; }
   </style>
@@ -25,7 +25,7 @@
 <body>
 
   <div id="ui">
-    <div>[STATUS] <span id="status">Initialisiere...</span></div>
+    <div>[STATUS] <span id="status">Initialisiere 3D-Welt...</span></div>
     <div>[LAT] <span id="lat">-</span></div>
     <div>[LON] <span id="lon">-</span></div>
     <div id="log" class="error"></div>
@@ -34,18 +34,19 @@
   <div id="cesiumContainer"></div>
 
   <script>
-    // OPTIONAL: Falls du ein Cesium Ion Konto hast, setze den Token hier:
+    // Falls du einen eigenen Token hast, hier eintragen:
     // Cesium.Ion.defaultAccessToken = 'DEIN_TOKEN';
 
-    async function initCesium() {
+    async function startApp() {
       try {
-        // Erstelle den OSM Layer korrekt für Version 1.100+
+        // 1. OpenStreetMap als Basiskarte definieren
         const osmLayer = new Cesium.ImageryLayer(new Cesium.OpenStreetMapImageryProvider({
           url: 'https://a.tile.openstreetmap.org/'
         }));
 
+        // 2. Viewer erstellen
         const viewer = new Cesium.Viewer('cesiumContainer', {
-          baseLayer: osmLayer, // Neuer Standardweg ab v1.104
+          baseLayer: osmLayer,
           baseLayerPicker: false,
           geocoder: false,
           homeButton: false,
@@ -57,63 +58,72 @@
           requestRenderMode: true
         });
 
-        // Gelände asynchron laden (der alte Weg wirft Fehler)
+        // --- HIER WERDEN DIE 3D-BERGE EINGEFÜGT ---
         try {
-            viewer.terrainProvider = await Cesium.CesiumTerrainProvider.fromUrl('https://assets.agi.com/stk-terrain/v1/tilesets/world/tiles');
+          const terrainProvider = await Cesium.CesiumTerrainProvider.fromUrl(
+            'https://assets.agi.com/stk-terrain/v1/tilesets/world/tiles'
+          );
+          viewer.terrainProvider = terrainProvider;
+          
+          // WICHTIG: Damit Objekte nicht "durch Berge hindurch" scheinen
+          viewer.scene.globe.depthTestAgainstTerrain = true; 
         } catch (terrainError) {
-            console.log("Gelände konnte nicht geladen werden, fahre ohne 3D-Gelände fort.");
+          console.error("Gelände-Fehler:", terrainError);
+          document.getElementById('log').innerText = "3D-Gelände konnte nicht geladen werden.";
         }
+        // ------------------------------------------
 
+        // User-Marker (Blauer Punkt)
         const userMarker = viewer.entities.add({
           point: {
-            pixelSize: 18,
+            pixelSize: 15,
             color: Cesium.Color.fromCssColorString('#0a84ff'),
             outlineColor: Cesium.Color.WHITE,
-            outlineWidth: 3
+            outlineWidth: 3,
+            heightReference: Cesium.HeightReference.RELATIVE_TO_GROUND // Marker klebt am Boden
           }
         });
 
         let hasFoundLocation = false;
 
+        // GPS Tracking
         if ("geolocation" in navigator) {
           document.getElementById('status').innerText = "Suche Satelliten...";
           
           navigator.geolocation.watchPosition(pos => {
             const { latitude, longitude, altitude } = pos.coords;
             
-            document.getElementById('status').innerText = "GPS Aktiv";
+            document.getElementById('status').innerText = "GPS Aktiv (3D)";
             document.getElementById('lat').innerText = latitude.toFixed(6);
             document.getElementById('lon').innerText = longitude.toFixed(6);
-            document.getElementById('log').innerText = "";
 
+            // Position setzen (Altitude wird vom GPS genommen, falls vorhanden)
             const position = Cesium.Cartesian3.fromDegrees(longitude, latitude, altitude || 0);
             userMarker.position = position;
 
             if (!hasFoundLocation) {
+              // Kamera-Flug: schräger Winkel (-30 Grad), damit man die Berge sieht
               viewer.camera.flyTo({
-                destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, 1500),
+                destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, 2000), // 2km Höhe
                 orientation: {
-                  pitch: Cesium.Math.toRadians(-30)
+                  pitch: Cesium.Math.toRadians(-35), // Blick nach vorne unten
+                  heading: 0
                 }
               });
               hasFoundLocation = true;
             }
           }, err => {
-            let msg = "GPS Fehler: ";
-            if (err.code === 1) msg += "Zugriff verweigert (HTTPS nötig!)";
-            else if (err.code === 2) msg += "Position ungenau.";
-            else msg += "Timeout.";
-            document.getElementById('log').innerText = msg;
-          }, {
-            enableHighAccuracy: true
-          });
+            document.getElementById('log').innerText = "GPS-Fehler: " + err.message + " (Braucht HTTPS!)";
+          }, { enableHighAccuracy: true });
         }
+
       } catch (e) {
-        document.getElementById('log').innerText = "Cesium Error: " + e.message;
+        document.getElementById('log').innerText = "Kritischer Fehler: " + e.message;
       }
     }
 
-    initCesium();
+    // App starten
+    startApp();
   </script>
 </body>
 </html>
