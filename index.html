@@ -34,80 +34,86 @@
   <div id="cesiumContainer"></div>
 
   <script>
-    // FIX 1: Wir nutzen einen freien Imagery Provider (OSM), 
-    // damit die Karte auch OHNE Ion-Token erscheint.
-    const osm = new Cesium.OpenStreetMapImageryProvider({
-        url : 'https://a.tile.openstreetmap.org/'
-    });
+    // OPTIONAL: Falls du ein Cesium Ion Konto hast, setze den Token hier:
+    // Cesium.Ion.defaultAccessToken = 'DEIN_TOKEN';
 
-    try {
+    async function initCesium() {
+      try {
+        // Erstelle den OSM Layer korrekt für Version 1.100+
+        const osmLayer = new Cesium.ImageryLayer(new Cesium.OpenStreetMapImageryProvider({
+          url: 'https://a.tile.openstreetmap.org/'
+        }));
+
         const viewer = new Cesium.Viewer('cesiumContainer', {
-            imageryProvider: osm,
-            terrainProvider: Cesium.createWorldTerrain(), // 3D Gelände
-            baseLayerPicker: false,
-            geocoder: false,
-            homeButton: false,
-            infoBox: false,
-            navigationHelpButton: false,
-            sceneModePicker: true, // Erlaubt Wechsel zwischen 2D/3D
-            timeline: false,
-            animation: false,
-            requestRenderMode: true // Spart Akku
+          baseLayer: osmLayer, // Neuer Standardweg ab v1.104
+          baseLayerPicker: false,
+          geocoder: false,
+          homeButton: false,
+          infoBox: false,
+          navigationHelpButton: false,
+          sceneModePicker: true,
+          timeline: false,
+          animation: false,
+          requestRenderMode: true
         });
 
-        // Blauer Punkt für deine Position
+        // Gelände asynchron laden (der alte Weg wirft Fehler)
+        try {
+            viewer.terrainProvider = await Cesium.CesiumTerrainProvider.fromUrl('https://assets.agi.com/stk-terrain/v1/tilesets/world/tiles');
+        } catch (terrainError) {
+            console.log("Gelände konnte nicht geladen werden, fahre ohne 3D-Gelände fort.");
+        }
+
         const userMarker = viewer.entities.add({
-            point: {
-                pixelSize: 18,
-                color: Cesium.Color.fromCssColorString('#0a84ff'),
-                outlineColor: Cesium.Color.WHITE,
-                outlineWidth: 3
-            }
+          point: {
+            pixelSize: 18,
+            color: Cesium.Color.fromCssColorString('#0a84ff'),
+            outlineColor: Cesium.Color.WHITE,
+            outlineWidth: 3
+          }
         });
 
         let hasFoundLocation = false;
 
-        // GPS Logik
         if ("geolocation" in navigator) {
-            document.getElementById('status').innerText = "Suche Satelliten...";
+          document.getElementById('status').innerText = "Suche Satelliten...";
+          
+          navigator.geolocation.watchPosition(pos => {
+            const { latitude, longitude, altitude } = pos.coords;
             
-            navigator.geolocation.watchPosition(pos => {
-                const { latitude, longitude, altitude } = pos.coords;
-                
-                document.getElementById('status').innerText = "GPS Aktiv";
-                document.getElementById('lat').innerText = latitude.toFixed(6);
-                document.getElementById('lon').innerText = longitude.toFixed(6);
-                document.getElementById('log').innerText = "";
+            document.getElementById('status').innerText = "GPS Aktiv";
+            document.getElementById('lat').innerText = latitude.toFixed(6);
+            document.getElementById('lon').innerText = longitude.toFixed(6);
+            document.getElementById('log').innerText = "";
 
-                const position = Cesium.Cartesian3.fromDegrees(longitude, latitude, altitude || 0);
-                userMarker.position = position;
+            const position = Cesium.Cartesian3.fromDegrees(longitude, latitude, altitude || 0);
+            userMarker.position = position;
 
-                if (!hasFoundLocation) {
-                    viewer.camera.flyTo({
-                        destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, 1500), // 1.5km Höhe
-                        orientation: {
-                            pitch: Cesium.Math.toRadians(-30) // Neigung für 3D Effekt
-                        }
-                    });
-                    hasFoundLocation = true;
+            if (!hasFoundLocation) {
+              viewer.camera.flyTo({
+                destination: Cesium.Cartesian3.fromDegrees(longitude, latitude, 1500),
+                orientation: {
+                  pitch: Cesium.Math.toRadians(-30)
                 }
-            }, err => {
-                let msg = "GPS Fehler: ";
-                if (err.code === 1) msg += "Zugriff verweigert. Nutze HTTPS!";
-                if (err.code === 2) msg += "Position nicht gefunden.";
-                if (err.code === 3) msg += "Timeout.";
-                document.getElementById('log').innerText = msg;
-            }, {
-                enableHighAccuracy: true,
-                maximumAge: 0
-            });
-        } else {
-            document.getElementById('log').innerText = "Browser unterstützt kein GPS.";
+              });
+              hasFoundLocation = true;
+            }
+          }, err => {
+            let msg = "GPS Fehler: ";
+            if (err.code === 1) msg += "Zugriff verweigert (HTTPS nötig!)";
+            else if (err.code === 2) msg += "Position ungenau.";
+            else msg += "Timeout.";
+            document.getElementById('log').innerText = msg;
+          }, {
+            enableHighAccuracy: true
+          });
         }
-
-    } catch (e) {
+      } catch (e) {
         document.getElementById('log').innerText = "Cesium Error: " + e.message;
+      }
     }
+
+    initCesium();
   </script>
 </body>
 </html>
