@@ -4,72 +4,65 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>Cesium 3D Berge Fix</title>
-  
   <script src="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Cesium.js"></script>
   <link href="https://cesium.com/downloads/cesiumjs/releases/1.115/Build/Cesium/Widgets/widgets.css" rel="stylesheet">
-
   <style>
-    html, body, #cesiumContainer {
-      width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden;
-      background: #000;
-    }
-    #ui {
-      position: absolute; top: 15px; left: 15px; z-index: 10;
-      background: rgba(0,0,0,0.85); color: #00ff00; padding: 15px;
-      border-radius: 12px; font-family: 'Courier New', monospace; font-size: 12px;
-      border: 1px solid #333; pointer-events: none;
-    }
+    html, body, #cesiumContainer { width: 100%; height: 100%; margin: 0; padding: 0; overflow: hidden; background: #000; }
+    #ui { position: absolute; top: 15px; left: 15px; z-index: 10; background: rgba(0,0,0,0.85); color: #00ff00; padding: 15px; border-radius: 12px; font-family: monospace; pointer-events: none; }
   </style>
 </head>
 <body>
 
   <div id="ui">
-    <div>[STATUS] <span id="status">Flug in die Alpen...</span></div>
+    <div>[STATUS] <span id="status">Lade 3D-Welt...</span></div>
   </div>
 
   <div id="cesiumContainer"></div>
 
   <script>
-    // OPTIONAL: Wenn du das Wasserzeichen entfernen willst, hol dir einen kostenlosen 
-    // Key auf cesium.com/ion und füge ihn hier ein:
-    // Cesium.Ion.defaultAccessToken = 'DEIN_TOKEN';
-
     async function startApp() {
-      // 1. Freie OSM-Karte
-      const osmLayer = new Cesium.ImageryLayer(new Cesium.OpenStreetMapImageryProvider({
-        url: 'https://a.tile.openstreetmap.org/'
-      }));
+      try {
+        // 1. Viewer initialisieren (ohne Standard-Terrain, das machen wir gleich)
+        const viewer = new Cesium.Viewer('cesiumContainer', {
+          baseLayer: new Cesium.ImageryLayer(new Cesium.OpenStreetMapImageryProvider({
+            url: 'https://a.tile.openstreetmap.org/'
+          })),
+          baseLayerPicker: false,
+          geocoder: false,
+          homeButton: false,
+          infoBox: false,
+          navigationHelpButton: false,
+          sceneModePicker: true,
+          timeline: false,
+          animation: false
+        });
 
-      // 2. Viewer erstellen mit dem NEUEN Terrain-Befehl
-      const viewer = new Cesium.Viewer('cesiumContainer', {
-        baseLayer: osmLayer,
-        
-        // HIER IST DER FIX: Nutzt das offizielle Cesium 3D-Gelände
-        terrain: Cesium.Terrain.fromWorldTerrain(), 
-        
-        baseLayerPicker: false,
-        geocoder: false,
-        homeButton: false,
-        infoBox: false,
-        navigationHelpButton: false,
-        sceneModePicker: true,
-        timeline: false,
-        animation: false
-      });
+        // 2. ArcGIS Terrain laden (Das funktioniert OHNE Token und zeigt echte Berge)
+        try {
+          const terrainProvider = await Cesium.ArcGISTiledElevationTerrainProvider.fromUrl(
+            'https://elevation3d.arcgis.com/arcgis/rest/services/WorldElevation3D/Terrain3D/ImageServer'
+          );
+          viewer.terrainProvider = terrainProvider;
+          document.getElementById('status').innerText = "3D Gelände aktiv!";
+        } catch (e) {
+          console.error("Terrain Fehler:", e);
+        }
 
-      // 3. Tiefenprüfung: Versteckt Dinge, die hinter Bergen sind
-      viewer.scene.globe.depthTestAgainstTerrain = true; 
+        // 3. Tiefenprüfung einschalten
+        viewer.scene.globe.depthTestAgainstTerrain = true;
 
-      // 4. Test-Flug zum Matterhorn (Schweizer Alpen)
-      // So siehst du sofort, ob 3D funktioniert
-      viewer.camera.flyTo({
-        destination: Cesium.Cartesian3.fromDegrees(7.6586, 45.9763, 6000), // Länge, Breite, Höhe (6km)
-        orientation: {
-          pitch: Cesium.Math.toRadians(-20), // Flacher Blickwinkel nach vorne
-          heading: Cesium.Math.toRadians(20) // Leicht gedreht
-        },
-        duration: 3 // Flug dauert 3 Sekunden
-      });
+        // 4. Direkt zum Grand Canyon fliegen (da sieht man das 3D Gelände am besten)
+        viewer.camera.flyTo({
+          destination: Cesium.Cartesian3.fromDegrees(-112.11, 36.10, 5000),
+          orientation: {
+            pitch: Cesium.Math.toRadians(-25),
+            heading: 0
+          }
+        });
+
+      } catch (error) {
+        console.error("Start Fehler:", error);
+      }
     }
 
     startApp();
